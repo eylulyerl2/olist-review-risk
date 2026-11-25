@@ -88,3 +88,30 @@
   products(category_name). Primary keys are indexed automatically.
 - Table comments are stored in the database (COMMENT ON TABLE) as built-in
   documentation.
+  
+## Feature engineering – ml.order_features view (sql/04_features.sql)
+
+- A SQL view in the `ml` schema computes one row per delivered order with
+  model features and the label. The Python model reads its training data
+  directly from this view (no CSV export).
+- Scope: 96,470 delivered orders with a delivery date; 95,824 are labeled and
+  646 have no review (scored later by the model).
+- Label: `is_negative = 1` if the most recent review score is 1 or 2.
+  Negative rate within scope: 12.81% (lower than the overall 14.69% because
+  undelivered orders, which mostly receive bad reviews, are out of scope).
+- Feature groups: delivery (delivery days, estimated days, delay days, late
+  flag, approval hours, carrier hand-off days), basket (items, products,
+  sellers, total price, freight, freight ratio), payment (total, installments,
+  main payment type), product (main category, weight, photos, description
+  length), location (customer/seller state, same-state flag, customer-seller
+  distance), customer history (number of earlier orders of the same person,
+  computed with a window function to avoid future leakage) and purchase
+  weekday.
+- Customer-seller distance is computed in SQL with the Haversine formula from
+  zip centroids; it is NULL for 477 orders whose zip has no valid coordinates.
+- Bug found during validation: PostgreSQL's LEAST() ignores NULLs, so missing
+  coordinates initially produced ~20,015 km distances. The NULL case is now
+  handled explicitly; after the fix there are 0 implausible distances
+  (max 3,399 km).
+- Key insight: negative review rate is 9.22% for on-time deliveries vs 54.07%
+  for late deliveries (about 6x higher).
