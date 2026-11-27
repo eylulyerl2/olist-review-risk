@@ -115,3 +115,20 @@
   (max 3,399 km).
 - Key insight: negative review rate is 9.22% for on-time deliveries vs 54.07%
   for late deliveries (about 6x higher).
+  
+## Python environment and database access
+
+- Python 3.13.2 in a project-local virtual environment (`.venv`), with exact
+  dependency versions pinned in `requirements.txt` for reproducibility:
+  pandas 3.1.1, scikit-learn 1.9.1, SQLAlchemy 2.1.9, psycopg 3.3.9,
+  python-dotenv 1.2.4.
+- `src/db.py` builds a SQLAlchemy engine (`postgresql+psycopg` driver) from the
+  values in `.env`, so credentials are never hard-coded in the source code.
+- `src/check_connection.py` verifies the integration: Python connects to
+  PostgreSQL 16.15 and reads `ml.order_features` directly with `pandas.read_sql`
+  (96,470 orders, 95,824 labeled, 30 columns). No CSV export is involved.
+- Of the 30 columns, 26 are model features; `order_id` (identifier),
+  `purchased_at` (used for the time-based train/test split), `review_score` and
+  `is_negative` (label) are excluded from the feature set to avoid data leakage.
+- Development environment: Visual Studio Code with the Python and Container
+  Tools extensions; DBeaver as the database GUI client.
