@@ -132,3 +132,44 @@
   `is_negative` (label) are excluded from the feature set to avoid data leakage.
 - Development environment: Visual Studio Code with the Python and Container
   Tools extensions; DBeaver as the database GUI client.
+  
+## Model training and evaluation (src/train.py, sql/05_ml_tables.sql)
+
+- Results tables in the `ml` schema: `model_runs` (one row per trained model,
+  hyperparameters as JSONB, a partial unique index guarantees at most one
+  selected model), `model_metrics` (metrics + confusion matrix per model and
+  split, PK (run_id, split)) and `predictions` (risk score per order).
+- Training data is read directly from `ml.order_features` (95,824 labeled
+  orders). Chronological split: train 70% (2016-09 -> 2018-04, 67,076 rows),
+  validation 15% (2018-04 -> 2018-06, 14,374), test 15% (2018-06 -> 2018-08,
+  14,374).
+- Preprocessing (scikit-learn Pipeline + ColumnTransformer): median imputation
+  and standardization (StandardScaler) for 22 numeric features; most-frequent
+  imputation and one-hot encoding for 4 categorical features.
+- Models: majority-class baseline, Logistic Regression (class_weight=balanced),
+  kNN (k=25, distance-weighted) and Random Forest (300 trees,
+  min_samples_leaf=5, balanced_subsample).
+- The decision threshold of each model is tuned on the validation set to
+  maximize F1; the best model is selected by validation F1; the test set is
+  used only once for the final report.
+- Test results:
+  | Model | Accuracy | Precision | Recall | F1 | ROC AUC |
+  |---|---|---|---|---|---|
+  | Baseline (majority) | 0.9045 | 0.0000 | 0.0000 | 0.0000 | 0.5000 |
+  | Logistic Regression | 0.8620 | 0.3040 | 0.3445 | 0.3230 | 0.6907 |
+  | kNN | 0.8673 | 0.3057 | 0.3066 | 0.3062 | 0.6522 |
+  | Random Forest (selected) | 0.8790 | 0.3568 | 0.3321 | 0.3440 | 0.6871 |
+- The baseline has the highest accuracy but detects no negative reviews,
+  showing why accuracy is misleading for imbalanced data.
+- Random Forest confusion matrix (test): TN 12,179, FP 822, FN 917, TP 456.
+  Precision 35.7% vs a 9.55% base rate = ~3.7x lift over random selection.
+- Top features: delay_days, delivery_days, is_late, carrier_handoff_days,
+  total_freight, distance_km -> the model independently learned the
+  late-delivery effect found in the SQL analysis.
+- Data drift: the negative rate falls from 13.95% (train) to 10.72%
+  (validation) and 9.55% (test), which a random split would have hidden.
+- Limitation: review sentiment also depends on unobserved factors (product
+  quality, expectations, damage), which caps achievable performance with
+  logistics and basket features only.
+- Note on timing: kNN "training" only stores the data; its cost is paid at
+  prediction time.
